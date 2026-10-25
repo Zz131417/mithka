@@ -112,7 +112,7 @@ jobs:
         # 'android-public-keystore' artifact once and commit
         # android/public.keystore.jks to the repo; the job will then reuse it.
         run: |
-          KS=android/public.keystore.jks
+          KS=android/app/public.keystore.jks
           if [ ! -f "$KS" ]; then
             keytool -genkeypair -v \
               -keystore "$KS" \
@@ -258,8 +258,13 @@ jobs:
 
       - name: Build macOS
         if: matrix.platform == 'macos'
+        env:
+          # Flutter 3.44 dropped the --no-codesign flag; build unsigned via
+          # xcodebuild settings instead (no Apple cert available on the worker).
+          CODE_SIGNING_ALLOWED: "NO"
+          CODE_SIGN_IDENTITY: ""
         run: |
-          flutter build macos --release --no-codesign
+          flutter build macos --release
           cp native-libs/libtdjson.dylib build/macos/Build/Products/Release/Mithka.app/Contents/Frameworks/ 2>/dev/null || \
           cp native-libs/libtdjson.dylib build/macos/Build/Products/Release/Mithka.app/Contents/MacOS/ 2>/dev/null || true
           tar -C build/macos/Build/Products/Release -czf mithka-macos.tar.gz Mithka.app
@@ -274,9 +279,10 @@ jobs:
             flutter pub get
           }
           flutter build windows --release --no-pub
-          Copy-Item native-libs/tdjson.dll build/windows/x64/runner/Release/
-          Compress-Archive -Path build/windows/x64/runner/Release/* `
-            -Destination mithka-windows-${{ matrix.arch }}.zip
+          $arch = "${{ matrix.arch }}"
+          Copy-Item native-libs/tdjson.dll "build/windows/$arch/runner/Release/"
+          Compress-Archive -Path "build/windows/$arch/runner/Release/*" `
+            -Destination "mithka-windows-$arch.zip" 
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -327,7 +333,7 @@ jobs:
           EOF
 
       - name: Build iOS simulator
-        run: flutter build ios --simulator --release
+        run: flutter build ios --simulator --profile
 
       - name: Upload simulator app
         uses: actions/upload-artifact@v7
