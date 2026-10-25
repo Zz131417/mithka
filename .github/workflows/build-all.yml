@@ -103,7 +103,32 @@ jobs:
           }
           EOF
 
-      - name: Build ${{ matrix.abi }} APK
+      - name: Set up public signing keystore
+        # Public, non-private signing key. Credentials (android/android/android)
+        # are intentionally public so the APK is reproducible without a private
+        # release key. The Gradle release signingConfig in android/app/build.gradle.kts
+        # picks this up via android/key.properties (which it already supports).
+        # To pin ONE consistent signature across builds, download the
+        # 'android-public-keystore' artifact once and commit
+        # android/public.keystore.jks to the repo; the job will then reuse it.
+        run: |
+          KS=android/public.keystore.jks
+          if [ ! -f "$KS" ]; then
+            keytool -genkeypair -v \
+              -keystore "$KS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias android \
+              -dname "CN=Mithka Public, O=Mithka Public, C=US" \
+              -storepass android -keypass android
+          fi
+          cat > android/key.properties <<EOF
+          storePassword=android
+          keyPassword=android
+          keyAlias=android
+          storeFile=public.keystore.jks
+          EOF
+
+      - name: Build ${{ matrix.abi }} APK (signed with public key)
         run: |
           flutter build apk --release --split-per-abi \
             --target-platform ${{ matrix.target }}
@@ -114,6 +139,13 @@ jobs:
           name: android-${{ matrix.abi }}
           path: build/app/outputs/flutter-apk/app-${{ matrix.abi }}-release.apk
           if-no-files-found: error
+      - name: Upload public keystore
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-public-keystore
+          path: android/public.keystore.jks
+          if-no-files-found: ignore
 
   # ----------------------------------------------------------------- Desktop
   desktop:
